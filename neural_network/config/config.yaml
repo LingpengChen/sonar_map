@@ -1,0 +1,33 @@
+# 模型超参数
+model:
+  A: 30  # 角度维度大小 (-15到15度)
+  D: 40  # 深度维度大小 (0到20m)
+  N: 40  # 声纳向量长度
+  M: 64  # 声纳特征向量维度
+  K: 256  # 融合特征维度
+  H1: 64  # 参数校准MLP隐藏层1
+  H2: 32  # 参数校准MLP隐藏层2
+  C_in: 16  # 2D卷积输入通道数
+  MAX_DEPTH: 20.0  # 最大深度 (米)
+  ANGLE_RANGE: 30.0  # 角度范围 (-15到15度)
+
+# 训练参数
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  num_epochs: 50
+  lr_decay_factor: 0.5
+  lr_patience: 5
+  lambda_phys: 0.1  # 物理一致性损失权重
+  lambda_ent: 0.01  # 熵正则化权重
+  
+# 数据增强参数
+augmentation:
+  param_noise_std: 0.05
+  sonar_noise_std: 0.02
+  
+# 数据集参数
+dataset:
+  train_ratio: 0.8
+  synthetic_samples: 2000
+  noise_level: 0.1

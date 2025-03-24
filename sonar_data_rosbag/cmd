@@ -1,0 +1,124 @@
+cd /media/clp/Data1/workspace/sonar/sonar_rosbag
+roscore
+rosbag play -l 1.bag
+
+
+rostopic type /oculus/sonar_image
+marine_acoustic_msgs/ProjectedSonarImage
+rosmsg show marine_acoustic_msgs/ProjectedSonarImage
+
+rostopic type /oculus/drawn_sonar
+sensor_msgs/Image
+
+sonar_image_proc
+build a node/nodelet draw_sonar which subscribes to an marine_acoustic_msgs/ProjectedSonarImage 
+and publishes a sensor_msgs/Image.
+
+/oculus/sonar_image (marine_acoustic_msgs/ProjectedSonarImage) ==> sensor_msgs/Image (sensor_msgs/Image)
+
+原始声纳数据 → /oculus/draw_sonar → /oculus/sonar_image
+                                /oculus/sonar_image → /oculus/histogram_drawer (展示直方图)
+                                /oculus/sonar_image → /postprocess/sonar_postprocessor → /postprocess/sonar_image
+                                                                                        /postprocess/sonar_image → /postprocess/draw_sonar (再次可视化)
+                                                                                        /postprocess/sonar_image → /postprocess/histogram_drawer (展示后处理直方图)
+
+
+clp@clp:~$ rosmsg show marine_acoustic_msgs/ProjectedSonarImage
+WARNING: Package name "BESTAnP" does not follow the naming conventions. It should start with a lower case letter and only contain lower case letters, digits, underscores, and dashes.
+std_msgs/Header header
+  uint32 seq
+  time stamp
+  string frame_id
+marine_acoustic_msgs/PingInfo ping_info
+  float32 frequency
+  float32 sound_speed
+  float32[] tx_beamwidths
+  float32[] rx_beamwidths
+geometry_msgs/Vector3[] beam_directions
+  float64 x
+  float64 y
+  float64 z
+float32[] ranges
+marine_acoustic_msgs/SonarImageData image
+  uint32 DTYPE_UINT8=0
+  uint32 DTYPE_INT8=1
+  uint32 DTYPE_UINT16=2
+  uint32 DTYPE_INT16=3
+  uint32 DTYPE_UINT32=4
+  uint32 DTYPE_INT32=5
+  uint32 DTYPE_UINT64=6
+  uint32 DTYPE_INT64=7
+  uint32 DTYPE_FLOAT32=8
+  uint32 DTYPE_FLOAT64=9
+  bool is_bigendian
+  uint32 dtype
+  uint32 beam_count
+  uint8[] data
+
+clp@clp:~$ rostopic echo /oculus/oculus_simple_ping_result
+header: 
+  seq: 2970
+  stamp: 
+    secs: 1733034760
+    nsecs: 102849512
+  frame_id: "oculus"
+src_device_id: 23415
+dst_device_id: 0
+msg_id: 35
+msg_version: 2
+payload_size: 93552
+master_mode: 2
+ping_rate: 165
+network_speed: 165
+gamma_correction: 127
+flags: 77
+range: 1.0
+gain_percent: 100.0
+speed_of_sound: 1487.0261682465482
+salinity: 0.0
+ext_flags: 0
+ping_id: 7371
+status: 64
+frequency: 2098880.5970149254
+temperature: 21.549999999999997
+pressure: 0.0396728515625
+heading: 1.625
+pitch: 0.0
+roll: 0.0
+speed_of_sound_used: 1487.0261682465482
+ping_start_time: 739.969164
+data_size: 0
+range_resolution: 0.002835263227456752
+n_ranges: 352
+n_beams: 256
+image_offset: 2048
+image_size: 91520
+message_size: 93568
+
+基本配置
+设备ID: 23415（源设备）
+主模式: 2（可能对应于某种预设扫描模式）
+频率: 约2.1MHz (2,098,880Hz)，这是一个相对较高的频率，适合近距离高分辨率成像
+扫描范围: 1.0米（相对较短的探测距离，适合精细观察）
+波束与分辨率特性
+波束数量: 256个（这是一个中高端的前视声纳配置）
+距离采样点数: 352个
+距离分辨率: 约2.8mm (0.002835m)，非常精细的分辨率
+总覆盖角度: 根据Oculus典型配置，可能在60°-130°之间
+数据特征
+数据大小: 图像数据91,520字节，总消息93,568字节
+声速: 1487.03 m/s（这是合理的海水声速）
+环境参数
+温度: 21.55°C
+压力: 0.0397 bar（非常浅，基本在水面附近）
+盐度: 0.0（设置为淡水环境）
+朝向: 1.625°（声纳的方向）
+性能设置
+Ping速率: 165Hz（这是相对较高的更新率）
+增益百分比: 100%（使用最大增益）
+Gamma校正: 127（中等设置）
+
+60/12 and 130/20
+垂直方向声纳的宽度：np.rad2deg( ping.ping_info.tx_beamwidths[0] )=12.000000333930423
+水平方向：[-0.5235987833701112 (-30degree), -0.519060909388374, -0.5145230301094494 ... ] delta_theta=0.26 degree
+len=256

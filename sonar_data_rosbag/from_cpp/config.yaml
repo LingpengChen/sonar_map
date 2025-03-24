@@ -1,0 +1,22 @@
+# draw_sonar_config.yaml
+# 与DrawSonar.cfg参数保持一致
+
+# 线条样式
+line_alpha: 0.5        # Alpha for lines (0.0-1.0)
+line_thickness: 1      # Line thickness (1-5)
+
+# 网格间距
+range_spacing: 0       # Spacing of range marks in meters (0 for auto)
+bearing_spacing: 20    # Spacing of bearing radials in degrees (0-100)
+
+# 对数缩放
+log_scale: false       # Use log scale for intensity
+min_db: 0              # Minimum intensity in log scale (in db, 0 for full range)
+max_db: 0              # Maximum intensity in log scale (in db, 0 for full range)
+
+# 额外参数（不在cfg中，但对节点有用）
+max_range: 0.0         # Maximum range to display (0 for unlimited)
+publish_old: false     # Publish using old API
+publish_timing: true   # Publish timing information
+publish_histogram: false # Publish histogram data
+color_map: "inferno"   # Color map to use
