@@ -1,79 +1,65 @@
-import numpy as np
+"""可视化工具"""
 import matplotlib.pyplot as plt
 import torch
+import numpy as np
+import seaborn as sns
 
-def visualize_reconstruction(model, p, s, device='cuda'):
+def plot_matrices(prior, observation, posterior, true_matrix, save_path=None):
     """
-    可视化重建结果
-    
-    参数:
-        model: 训练好的模型
-        p: [3] 参数向量 [θₐ, d, θₚ]
-        s: [N] 声纳向量
+    可视化概率矩阵和观测向量
+    Args:
+        prior: 先验矩阵
+        observation: 观测向量
+        posterior: 后验矩阵
+        true_matrix: 真实矩阵
+        save_path: 保存路径，如果为None则显示图像
     """
-    model.eval()
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     
-    # 准备输入
-    p = p.unsqueeze(0).to(device)  # [1, 3]
-    s = s.unsqueeze(0).to(device)  # [1, N]
+    # 先验矩阵
+    sns.heatmap(prior.detach().cpu().numpy(), annot=True, fmt='.2f', 
+                ax=axes[0], cmap='Blues', vmin=0, vmax=1)
+    axes[0].set_title('Prior Matrix')
     
-    # 前向传播
-    with torch.no_grad():
-        R, intermediates = model(p, s)
+    # 观测向量
+    obs_display = observation.detach().cpu().numpy().reshape(-1, 1)
+    sns.heatmap(obs_display, annot=True, fmt='.2f', 
+                ax=axes[1], cmap='Greens', vmin=0, vmax=1)
+    axes[1].set_title('Observation Vector')
     
-    # 转换为numpy用于可视化
-    R_np = R.squeeze(0).cpu().numpy()
-    P_d_np = intermediates['P_d'].squeeze(0).cpu().numpy()
-    P_c_np = intermediates['P_c'].squeeze(0).cpu().numpy()
-    P_np = intermediates['P'].squeeze(0).cpu().numpy()
-    s_np = s.squeeze(0).cpu().numpy()
+    # 后验矩阵
+    sns.heatmap(posterior.detach().cpu().numpy(), annot=True, fmt='.2f', 
+                ax=axes[2], cmap='Reds', vmin=0, vmax=1)
+    axes[2].set_title('Posterior Matrix')
     
-    # 可视化
-    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-    
-    # 直接物理先验
-    im0 = axs[0, 0].imshow(P_d_np, aspect='auto', 
-                          extent=[-15, 15, 20, 0])
-    axs[0, 0].set_title('Direct Physics Prior')
-    axs[0, 0].set_xlabel('Angle (degrees)')
-    axs[0, 0].set_ylabel('Depth (m)')
-    plt.colorbar(im0, ax=axs[0, 0])
-    
-    # 校准物理先验
-    im1 = axs[0, 1].imshow(P_c_np, aspect='auto', 
-                          extent=[-15, 15, 20, 0])
-    axs[0, 1].set_title('Calibrated Physics Prior')
-    axs[0, 1].set_xlabel('Angle (degrees)')
-    axs[0, 1].set_ylabel('Depth (m)')
-    plt.colorbar(im1, ax=axs[0, 1])
-    
-    # 最终重建结果
-    im2 = axs[1, 0].imshow(R_np, aspect='auto', 
-                          extent=[-15, 15, 20, 0])
-    axs[1, 0].set_title('Reconstructed Seafloor Map')
-    axs[1, 0].set_xlabel('Angle (degrees)')
-    axs[1, 0].set_ylabel('Depth (m)')
-    plt.colorbar(im2, ax=axs[1, 0])
-    
-    # 声纳向量
-    axs[1, 1].plot(np.linspace(0, 20, len(s_np)), s_np)
-    axs[1, 1].set_title('Input Sonar Vector')
-    axs[1, 1].set_xlabel('Range (m)')
-    axs[1, 1].set_ylabel('Intensity')
+    # 真实矩阵
+    sns.heatmap(true_matrix.detach().cpu().numpy(), annot=True, fmt='.2f', 
+                ax=axes[3], cmap='Purples', vmin=0, vmax=1)
+    axes[3].set_title('True Matrix')
     
     plt.tight_layout()
-    plt.show()
     
-    return R_np, P_d_np, P_c_np, P_np
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
 
-def plot_training_history(train_losses, val_losses):
-    """绘制训练历史"""
-    plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label='Train Loss')
+def plot_training_curves(train_losses, val_losses, save_path=None):
+    """
+    绘制训练和验证损失曲线
+    """
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_losses, label='Training Loss')
     plt.plot(val_losses, label='Validation Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
-    plt.legend()
     plt.title('Training and Validation Loss')
-    plt.savefig('training_history.png')
-    plt.show()
+    plt.legend()
+    plt.grid(True)
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()

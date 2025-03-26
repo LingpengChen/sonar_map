@@ -6,6 +6,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import random
 from scipy.ndimage import gaussian_filter1d
 
+
 class UnderwaterSimulator:
     """
     基于 Pygame 的海底侧面视图二维环境模拟器
@@ -608,8 +609,12 @@ class UnderwaterSimulator:
         plt.close()
         print(f"环境地图已保存至 {filename}")
 
+
+
 # 示例：如何使用UnderwaterSimulator类
 if __name__ == "__main__":
+    np.random.seed(0)
+    random.seed(0)
     # 创建模拟器实例
     robot_config_path = '/home/clp/catkin_ws/src/sonar_map/src/config/robot_config.yaml'
     sim = UnderwaterSimulator(robot_config_path)
@@ -619,10 +624,32 @@ if __name__ == "__main__":
         sim.handle_events()
         
         # 获取最新深度图
-        depth, angle = sim.render_image()
-        
+        # depth, angle = sim.render_image()
+        sonar_image, kernel_matrix, range_axis, depth_image, angles = sim.render_sonar()
         # 获取机器人位姿
-        x, y, pitch, height = sim.get_robot_pose()
+        x, y, pitch, depth2seafloor = sim.get_robot_pose()
+
+        
+        def get_prior_kernel_matrix():
+            prior_kernel_matrix = np.zeros(shape=kernel_matrix.shape)
+
+            distances = np.abs(depth2seafloor/np.sin(angles))
+            valid_mask = distances < sim.robot['max_range']
+            valid_distances = distances[valid_mask]
+            valid_angles_indices = np.where(valid_mask)[0]
+            r_indices = np.abs(range_axis[:, np.newaxis] - valid_distances).argmin(axis=0)
+            prior_kernel_matrix[r_indices, valid_angles_indices] += 1
+            
+            # sonar_image = sonar_image.reshape(-1,1)
+            # depth_image = range_axis.reshape(1,-1) @ prior_kernel_matrix
+            return prior_kernel_matrix
+        
+        prior_kernel_matrix = get_prior_kernel_matrix()
+        
+        np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
+        np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
+        np.savetxt('sonar_image.txt', sonar_image, fmt='%.0f', delimiter=',')
+
         
         # 绘制场景
         sim.plot_sim()

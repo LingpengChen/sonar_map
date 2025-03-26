@@ -5,9 +5,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import random
 
-np.random.seed(0)
-random.seed(0)
-
 class SonarMap:
     def __init__(self,robot_config_path,  map_size=(500, 100)):
         """
@@ -160,13 +157,18 @@ class SonarMap:
             valid_angles_indices = np.where(valid_mask)[0]
             r_indices = np.abs(self.range_axis[:, np.newaxis] - valid_distances).argmin(axis=0)
             prior_kernel_matrix[r_indices, valid_angles_indices] += 1
-            np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
+            # np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
             
             # sonar_image = sonar_image.reshape(-1,1)
             # depth_image = range_axis.reshape(1,-1) @ prior_kernel_matrix
             return prior_kernel_matrix
         
         def reconstruct_depth_from_sonar_byprior(sonar_image):
+            # the logic is expanding sonaring image column by column (really naive but effective)
+            # [[0] => [[0,0,0],
+            #  [2]     [0,1,1],
+            #  [1]]    [1,0,0]]
+                    
             depth_image = np.full(len(angles), -1.)
             
             values = []
@@ -415,7 +417,10 @@ class SonarMap:
 
 
 if __name__ == "__main__":
-    # 创建侧视图模拟器实例
+    
+    np.random.seed(0)
+    random.seed(0)
+
     robot_config_path = '/home/clp/catkin_ws/src/sonar_map/src/config/robot_config.yaml'
     sim = UnderwaterSimulator(robot_config_path)
     
