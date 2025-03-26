@@ -1,11 +1,15 @@
 from side_view_simulator import UnderwaterSimulator
-import pygame
+import pygame, yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+import random
+
+np.random.seed(0)
+random.seed(0)
 
 class SideViewMap:
-    def __init__(self, map_size=(500, 100), resolution=0.1):
+    def __init__(self,robot_config_path,  map_size=(500, 100)):
         """
         初始化侧视图TSDF地图
         
@@ -13,22 +17,35 @@ class SideViewMap:
             map_size: 地图大小 (width, height)
             resolution: 地图分辨率(m)
         """
+        with open(robot_config_path, 'r') as file:
+            config = yaml.safe_load(file)
+            self.sensor_fov = float(config['sensor_fov'])
+            self.sensor_fov_partition_num = float(config['sensor_fov_partition_num'])
+            self.sensor_range = float(config['sensor_range'])
+            
         self.map_size = map_size
-        self.resolution = resolution
-        
+                
         # 创建TSDF地图，每个体素包含SDF值和权重
         self.tsdf_values = np.zeros(map_size)  # SDF值
         self.tsdf_weights = np.zeros(map_size)  # 权重
         
-        # 地图分辨率(sigma_map)设置为1个网格
+        # 地图分辨率(sigma_map)设置为1个网格 BY DEFAULT
         self.sigma_map = 1  # σ_map (地图分辨率)
         
         # 截断距离应该是地图分辨率的倍数
-        self.scaling_factor = 10  # t (缩放因子)
+        self.scaling_factor = 0.5*self.sensor_range / self.sigma_map  # t (缩放因子)
+                                                                # t=0.5 is reasonable because 
+                                                                # assume 60m sensing range, then truncatio_distance(td)=30,
+                                                                # and a obstacle happen to locate at 60.0001m
+                                                                # so not detected, ideally, from 0~30 start from cam, tsdf=30, 
+                                                                # from 30~60 start from cam, tsdt=30~0, but with info we have we cannot know, 
+                                                                # so best strategy is not to update this range 
+                                                                # (i.e., the ray that update tsdf will stop update this range) 
+                                                                # later max_range for updating tsdf will set to self.truncation_distance if the true range > sensing range (i.e., sensing nothing) 
         self.truncation_distance = self.scaling_factor * self.sigma_map  # δ = t * σ_map
         
         # 权重阈值，用于判断已知和未知空间
-        self.tau_w = 0.01
+        self.tau_w = 5
         
         # 状态地图: 0-未知，1-已知
         self.state_map = np.zeros(map_size)
@@ -57,7 +74,7 @@ class SideViewMap:
             if d <= 0:
                 max_range = self.truncation_distance
             else:
-                max_range = min(d + self.truncation_distance, d * 2)
+                max_range = min(d + self.truncation_distance, d * 2) # update voxel with (self.truncation_distance) behind the obstacle
             
             # 在光线方向上均匀采样点
             sample_points = np.linspace(0, max_range, int(max_range) + 1)
@@ -80,7 +97,19 @@ class SideViewMap:
                 
                 # 计算权重 (式2)
                 base_weight = self._compute_weight(sdf)
-                depth_weight = 1.0 / (d * d) if d > 0 else 0  # 基于深度的权重
+                # depth_weight = 1.0 / (d * d) if d > 0 else 1  # 基于深度的权重
+                
+                # depth置信度 = 最大置信度 × e^(-k × 距离)
+                    # 其中：
+
+                    # 最大置信度：近距离探测的最高置信度(通常设为0.95或0.99)
+                    # k：衰减系数(根据设备性能调整，典型值在0.05-0.2之间)
+                    # 距离：以米为单位的探测距离
+                    # 例如，如果设置最大置信度为0.95，k=0.1：
+
+                    # 10米处置信度 = 0.95 × e^(-0.01×10) ≈ 0.86
+                    # 100米处置信度 = 0.95 × e^(-0.01×100) ≈ 0.35
+                depth_weight = 0.95*np.exp(-0.01 * d) if d > 0 else 0.95  # 基于深度的权重
                 weight = base_weight * depth_weight
                 
                 # 更新TSDF值和权重 (式3)
@@ -97,7 +126,8 @@ class SideViewMap:
                     self.state_map[px, py] = 0  # 未知
                 else:
                     self.state_map[px, py] = 1  # 已知
-    
+            print(np.max(self.tsdf_weights))
+            
     def _compute_sdf(self, sample_dist, ray_depth):
         """
         计算采样点的SDF值 (式1)
@@ -125,10 +155,11 @@ class SideViewMap:
             权重值
         """
         # 实现式(2)
-        if -self.sigma_map < sdf <= self.truncation_distance:
+        if 0 <= sdf <= self.truncation_distance:
             return 1.0
-        elif -self.truncation_distance <= sdf <= -self.sigma_map:
-            return (self.truncation_distance + sdf) / (self.truncation_distance - self.sigma_map)
+        elif -self.truncation_distance <= sdf < -self.sigma_map:
+            # return (self.truncation_distance + sdf) / (self.truncation_distance - self.sigma_map)
+            return np.exp(0.2*sdf)
         else:
             return 0.0
     
@@ -219,7 +250,7 @@ class SideViewMap:
         normalized_tsdf = (clipped_tsdf + self.truncation_distance) / (2 * self.truncation_distance)
         
         # 绘制颜色映射的TSDF
-        cax = ax.imshow(normalized_tsdf.T, cmap='coolwarm', origin='lower', 
+        cax = ax.imshow(normalized_tsdf.T, cmap='summer', origin='lower', 
                         extent=(0, self.map_size[0], 0, self.map_size[1]))
         
         # 绘制状态图的轮廓（已知区域）
@@ -237,10 +268,10 @@ class SideViewMap:
         ax.plot(robot_x, robot_y, 'ro', markersize=robot_marker_size)
         
         # 绘制方向箭头 (在侧视图中，pitch角表示垂直平面中的方向)
-        arrow_length = 5
-        dx = arrow_length * np.cos(robot_pitch + np.pi)  # 侧面视图中朝向向下为正方向
-        dy = arrow_length * np.sin(robot_pitch + np.pi)
-        ax.arrow(robot_x, robot_y, dx, dy, head_width=2, head_length=2, fc='r', ec='r')
+        arrow_length = 10
+        dx = arrow_length * np.cos(robot_pitch)  # 侧面视图中朝向向下为正方向
+        dy = arrow_length * np.sin(robot_pitch)
+        ax.arrow(robot_x, robot_y, dx, dy, head_width=6, head_length=6, fc='r', ec='r')
         
         ax.set_title('TSDF')
         ax.set_xlabel('X')
@@ -263,13 +294,14 @@ class SideViewMap:
         # 清理matplotlib图形
         plt.close(fig)
 
-# 示例：如何使用SideViewMap类与侧视图模拟器配合
+
 if __name__ == "__main__":
     # 创建侧视图模拟器实例
-    sim = UnderwaterSimulator(size=(500, 100), window_size=(1200, 800))
+    robot_config_path = '/home/clp/catkin_ws/src/sonar_map/src/config/robot_config.yaml'
+    sim = UnderwaterSimulator(robot_config_path)
     
     # 创建侧视图地图实例
-    mapping_module = SideViewMap(map_size=(500, 100), resolution=0.1)
+    mapping_module = SideViewMap(robot_config_path)
 
     while sim.running:
         # 处理事件
@@ -277,9 +309,9 @@ if __name__ == "__main__":
         
         # 获取最新深度图
         depth, angles = sim.render_image()
-        
+
         # 获取机器人位姿
-        x, y, pitch = sim.get_robot_pose()
+        x, y, pitch, height = sim.get_robot_pose()
         
         # 更新TSDF地图
         mapping_module.update_map(depth, angles, x, y, pitch)
@@ -294,4 +326,4 @@ if __name__ == "__main__":
         pygame.display.flip()
         
         # 控制帧率
-        sim.clock.tick(30)
+        sim.clock.tick(50)

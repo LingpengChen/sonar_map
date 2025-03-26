@@ -1,9 +1,10 @@
 import numpy as np
 import pygame
-import sys
+import sys, yaml
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import random
+from scipy.ndimage import gaussian_filter1d
 
 class UnderwaterSimulator:
     """
@@ -11,32 +12,48 @@ class UnderwaterSimulator:
     模拟器提供更密集的网格，凹凸不平的海底地形，小石头和障碍物
     """
     
-    def __init__(self, size=(500, 100), resolution=0.1, window_size=(1200, 800)):
+    def __init__(self, robot_config_path, size=(500, 100), window_size=(1200, 800)):
         """
         初始化模拟器环境和机器人
         
         参数:
             size: 环境网格尺寸 (宽度,高度)，默认500x100 (50m x 10m)
-            resolution: 每个网格的实际尺寸（米），默认0.1米
             window_size: Pygame窗口尺寸，默认1200x800
         """
         # 环境设置
         self.size = size
-        self.resolution = resolution
         # 创建环境地图 (1=自由空间/水, 0=障碍物/海底地形)
         self.environment = np.ones(size)
         
         # 机器人设置
+        with open(robot_config_path, 'r') as file:
+            config = yaml.safe_load(file)
+            sensor_fov = int(config['sensor_fov'])
+            sensor_fov_partition_num = int(config['sensor_fov_partition_num'])
+            sensor_range = int(config['sensor_range'])
+            sensor_range_resolution = float(config['sensor_range_resolution'])
+        
+        
         self.robot = {
             'x': size[0] // 20,     # 初始X位置（网格坐标）
             'y': size[1] // 2,     # 初始Y位置（网格坐标）
             'pitch': 0.08*np.pi,          # 初始水平方向（0=向右，π=向左，弧度）
             # 'pitch': 1.2*np.pi,          # 初始水平方向（0=向右，π=向左，弧度） 
-            'fov': np.radians(30), # 视场角（设置为30度）
-            'max_range': 100,       # 最大探测范围（网格数）
-            'resolution': np.radians(0.5), # 角度分辨率
-            'radius': 5            # 机器人半径
+            'radius': 1,            # 机器人半径
+            'fov': np.radians(sensor_fov), # 视场角（设置为30度）
+            'fov_partition_num': sensor_fov_partition_num, # 角度分辨率
+            'max_range': sensor_range,       # 最大探测范围（网格数）
+            'range_resolution': sensor_range_resolution,       
         }
+        # range_axis [0, 0.5, 1, ..., 99.0, 99.5]
+        self.range_axis = np.arange(0, self.robot['max_range'], self.robot['range_resolution'])
+        
+        
+        # Assume we have multiple rays from sensors based on angle resolution
+        start_angle = -0.5*self.robot['fov']
+        end_angle = 0.5*self.robot['fov']
+        line_num = self.robot['fov_partition_num']+1
+        self.rays_angles = np.linspace(start_angle, end_angle, line_num)
         
         # 轨迹记录
         self.trajectory = [(self.robot['x'], self.robot['y'])]
@@ -211,10 +228,10 @@ class UnderwaterSimulator:
         center_angle = self.robot['pitch'] 
         
         # 计算视线方向范围
-        start_angle = center_angle - self.robot['fov'] / 2
-        end_angle = center_angle + self.robot['fov'] / 2
-        angles = np.arange(start_angle, end_angle, self.robot['resolution'])
-        
+        # start_angle = center_angle - self.robot['fov'] / 2
+        # end_angle = center_angle + self.robot['fov'] / 2
+        # angles = np.arange(start_angle, end_angle, self.robot['fov_partition_num'])
+        angles = center_angle + self.rays_angles
         # 初始化深度数组
         depths = np.zeros_like(angles)
         
@@ -226,11 +243,44 @@ class UnderwaterSimulator:
         # 保存深度图数据
         self.last_depths = depths.copy()
         self.last_angles = angles
-        depths[depths == 100] = -1
+        depths[depths == self.robot['max_range']] = -1
         return depths, angles
+
+    def render_sonar(self):
+        '''
+        先生成depth image后生成sonar image
+        
+        返回:
+            arg2-5 is for 3D reconsturction, we will not use them for our mapping, but we will use them to train our 3D recover network
+            arg1: sonar_image [0,1 (intensity value), 2, 0...], len = range/resolution, sonar image is summation of kernel_matrix along angles direction
+            arg2: kernel_matrix [[0,1],[1,0]], shape = (range/resolution, fov/fov_resolution) fov here is angle of vertical aperture 
+            arg3: range_axis [0, 0.5, 1, ..., 9.0, 9.5]
+            arg4: depth_image, len = fov/fov_resolution, store depth informtion from top to down
+            arg5: angles, the cooresponding angle for each depth data
+            
+            range_axis.reshape(1,-1) @ kernel_matrix = depth_image.reshape(1,-1)
+            
+            The goal of our neural network is to recover/infer the kernel_matrix from sonar_image 
+            So that we can get depth_image
+        '''
+        depth_image, angles = self.render_image()
+        
+        
+        kernel_matrix = (depth_image[:, np.newaxis] == self.range_axis).astype(int)
+        sonar_image = np.sum(kernel_matrix, axis=0)
+        
+        kernel_matrix = kernel_matrix.T
+        # np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
+        return sonar_image, kernel_matrix, self.range_axis, depth_image, angles
     
     def get_robot_pose(self):
-        return self.robot['x'], self.robot['y'], self.robot['pitch']
+        # 找到海底高度
+        y_seafloor = 0
+        x = int(self.robot['x'])
+        while y_seafloor < self.size[1] and self.environment[x, y_seafloor] == 1:
+            y_seafloor += 1
+        sea_floor_depth = y_seafloor-self.robot['y']
+        return self.robot['x'], self.robot['y'], self.robot['pitch'], sea_floor_depth
     
     def _cast_ray(self, x, y, angle):
         """
@@ -244,7 +294,7 @@ class UnderwaterSimulator:
             深度值
         """
         # 使用精细的光线步长以提高精度
-        step_size = 0.5
+        step_size = self.robot['range_resolution']
         
         # 计算光线方向向量
         dx = np.cos(angle) * step_size
@@ -328,7 +378,7 @@ class UnderwaterSimulator:
         # 绘制机器人（圆形）
         robot_x = int(self.robot['x'] * self.display_scale)
         robot_y = int(self.robot['y'] * self.display_scale)
-        robot_radius = int(self.robot['radius'] * self.display_scale * 0.4)  # 略微缩小显示
+        robot_radius = int(self.robot['radius'] * self.display_scale)  # 略微缩小显示
         
         # 绘制机器人主体
         pygame.draw.circle(self.screen, self.colors['robot'], (robot_x, robot_y), robot_radius)
@@ -470,9 +520,7 @@ class UnderwaterSimulator:
             dpitch = self.turn_speed  # 逆时针旋转
         if keys[pygame.K_e]:
             dpitch = -self.turn_speed  # 顺时针旋转
-        
-      
-        
+
         # 应用移动
         if dx != 0 or dy != 0 or dpitch != 0:
             self.robot_move(dx=dx, dy=dy, dpitch=dpitch)
@@ -497,7 +545,7 @@ class UnderwaterSimulator:
         # 绘制条形图
         plt.subplot(1, 2, 1)
         angle_degrees = np.degrees(np.linspace(-self.robot['fov']/2, self.robot['fov']/2, len(self.last_depths)))
-        plt.bar(angle_degrees, self.last_depths, width=np.degrees(self.robot['resolution']), align='center', color='aqua')
+        plt.bar(angle_degrees, self.last_depths, width=np.degrees(self.robot['fov']/self.robot['fov_partition_num']), align='center', color='aqua')
         plt.xlabel('角度 (度)')
         plt.ylabel('深度')
         plt.title('深度图')
@@ -563,7 +611,8 @@ class UnderwaterSimulator:
 # 示例：如何使用UnderwaterSimulator类
 if __name__ == "__main__":
     # 创建模拟器实例
-    sim = UnderwaterSimulator(size=(500, 100), window_size=(1200, 800))
+    robot_config_path = '/home/clp/catkin_ws/src/sonar_map/src/config/robot_config.yaml'
+    sim = UnderwaterSimulator(robot_config_path)
     
     while sim.running:
         # 处理事件
@@ -573,7 +622,7 @@ if __name__ == "__main__":
         depth, angle = sim.render_image()
         
         # 获取机器人位姿
-        x, y, pitch = sim.get_robot_pose()
+        x, y, pitch, height = sim.get_robot_pose()
         
         # 绘制场景
         sim.plot_sim()

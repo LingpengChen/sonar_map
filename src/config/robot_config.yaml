@@ -1,0 +1,4 @@
+sensor_fov: 30 # degree, vertical aperture for sonar
+sensor_fov_partition_num: 30 # partitaion 30 degree into 60 parts (i.e., sensor_fov/fov_resolution)
+sensor_range: 100
+sensor_range_resolution: 1
