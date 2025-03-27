@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import random
 from scipy.ndimage import gaussian_filter1d
+import os
 
 
 class UnderwaterSimulator:
@@ -613,11 +614,19 @@ class UnderwaterSimulator:
 
 # 示例：如何使用UnderwaterSimulator类
 if __name__ == "__main__":
-    np.random.seed(0)
-    random.seed(0)
+    random_seed = 0
+    np.random.seed(random_seed)
+    random.seed(random_seed)
     # 创建模拟器实例
     robot_config_path = '/home/clp/catkin_ws/src/sonar_map/src/config/robot_config.yaml'
     sim = UnderwaterSimulator(robot_config_path)
+    
+    stored_data_path = '/home/clp/catkin_ws/src/sonar_map/neural_network/data/raw_data'
+    stored_kernel_matrices = []
+    stored_prior_matrices = []
+    stored_sonar_images = []
+    previous_sonar_image = None
+    
     
     while sim.running:
         # 处理事件
@@ -646,10 +655,6 @@ if __name__ == "__main__":
         
         prior_kernel_matrix = get_prior_kernel_matrix()
         
-        np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
-        np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
-        np.savetxt('sonar_image.txt', sonar_image, fmt='%.0f', delimiter=',')
-
         
         # 绘制场景
         sim.plot_sim()
@@ -659,3 +664,20 @@ if __name__ == "__main__":
         
         # 控制帧率
         sim.clock.tick(30)
+        
+        # np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
+        # np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
+        # np.savetxt('sonar_image.txt', sonar_image, fmt='%.0f', delimiter=',')
+        if previous_sonar_image is None or not np.array_equal(sonar_image, previous_sonar_image):
+            # 将新数据添加到存储列表
+            stored_kernel_matrices.append(kernel_matrix)
+            stored_prior_matrices.append(prior_kernel_matrix)
+            stored_sonar_images.append(sonar_image)    
+            previous_sonar_image = sonar_image.copy()
+            
+            data_num = len(stored_sonar_images)
+            if data_num % 50 == 49:
+                np.save(os.path.join(stored_data_path, f'true_matrices_{random_seed}.npy'), np.array(stored_kernel_matrices))
+                np.save(os.path.join(stored_data_path,f'prior_matrices_{random_seed}.npy'), np.array(stored_prior_matrices))
+                np.save(os.path.join(stored_data_path,f'obs_vectors_{random_seed}.npy'), np.array(stored_sonar_images))
+                print(f"save {data_num}")
