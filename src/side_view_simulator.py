@@ -610,11 +610,21 @@ class UnderwaterSimulator:
         plt.close()
         print(f"环境地图已保存至 {filename}")
 
-
+def modify_zero_columns(matrix):
+    # 转换为numpy数组以便操作
+    # matrix = np.array(matrix)
+    
+    # 找到所有列的和为0的列索引
+    zero_columns = np.where(np.all(matrix == 0, axis=0))[0]
+    
+    # 对于每个全为0的列，将最后一个元素设为1
+    for col in zero_columns:
+        matrix[-1, col] = 1
+    return matrix
 
 # 示例：如何使用UnderwaterSimulator类
 if __name__ == "__main__":
-    random_seed = 0
+    random_seed = 1
     np.random.seed(random_seed)
     random.seed(random_seed)
     # 创建模拟器实例
@@ -665,14 +675,18 @@ if __name__ == "__main__":
         # 控制帧率
         sim.clock.tick(30)
         
-        # np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
-        # np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
-        # np.savetxt('sonar_image.txt', sonar_image, fmt='%.0f', delimiter=',')
         if previous_sonar_image is None or not np.array_equal(sonar_image, previous_sonar_image):
             # 将新数据添加到存储列表
+            kernel_matrix = modify_zero_columns(kernel_matrix)
+            prior_kernel_matrix = modify_zero_columns(prior_kernel_matrix)
+            # np.savetxt('kernel_matrix.txt', kernel_matrix, fmt='%.0f', delimiter=',')
+            # np.savetxt('prior_kernel_matrix.txt', prior_kernel_matrix, fmt='%.0f', delimiter=',')
+            # np.savetxt('sonar_image.txt', sonar_image, fmt='%.0f', delimiter=',')
+            
             stored_kernel_matrices.append(kernel_matrix)
             stored_prior_matrices.append(prior_kernel_matrix)
             stored_sonar_images.append(sonar_image)    
+            
             previous_sonar_image = sonar_image.copy()
             
             data_num = len(stored_sonar_images)
