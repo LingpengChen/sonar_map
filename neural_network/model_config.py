@@ -2,8 +2,11 @@
 
 class Config:
     # 数据参数
-    M = 6  # 矩阵行数
-    N = 4  # 矩阵列数
+    # prior_matrices.shape = torch.Size([data_num, M, N])
+    # true_matrices.shape = torch.Size([data_num, M, N])
+    # obs_vectors.shape = torch.Size([data_num, M])
+    M = 100  # 矩阵行数 range/range_resolution
+    N = 31  # 矩阵列数 vertical_aperture/aperture_resolution
     
     # 模型参数
     model_type = 'concat'  # 'concat' 或 'attention'
@@ -17,13 +20,14 @@ class Config:
     weight_decay = 1e-5
     
     # 数据生成参数
-    train_samples = 10000
-    val_samples = 1000
-    test_samples = 1000
+    train_samples_percentage = 0.7
+    val_samples_percentage = 0.15
+    test_samples_percentage = 0.15
     
     # 路径
-    save_dir = './checkpoints'
-    log_dir = './logs'
+    data_dir = './data/dataset'
+    save_dir = './checkpoints/' + model_type
+    log_dir = './logs/' + model_type
     
     def __str__(self):
         return str(self.__dict__)

@@ -10,7 +10,7 @@ import numpy as np
 
 from model_config import Config
 from modules import get_network
-from utils import ProbabilityDataGenerator, cross_entropy_loss, plot_matrices, plot_training_curves
+from utils import SonarMapDataLoader, SonarMapDataGenerator, cross_entropy_loss, plot_matrices, plot_training_curves
 
 def train(config: Config):
     # 创建保存目录
@@ -24,10 +24,9 @@ def train(config: Config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
     
-    # 创建数据生成器和加载器
-    data_generator = ProbabilityDataGenerator(config.M, config.N, config.batch_size)
-    train_loader, val_loader, _ = data_generator.get_data_loaders(
-        config.train_samples, config.val_samples, config.test_samples
+    data_loader = SonarMapDataLoader(config.M, config.N, config.batch_size, data_dir=config.data_dir)
+    train_loader, val_loader, test_loader = data_loader.get_data_loaders(
+        train_ratio=config.train_samples_percentage, val_ratio=config.val_samples_percentage, test_ratio=config.test_samples_percentage, shuffle=True
     )
     
     # 初始化模型
@@ -35,6 +34,17 @@ def train(config: Config):
     print(f"模型类型: {config.model_type}")
     print(f"模型总参数: {sum(p.numel() for p in model.parameters())}")
     
+    
+    from torchinfo import summary
+    # 获取一个批次数据的形状用于模型摘要
+    sample_input_shapes = [(1, config.M, config.N), (1, config.M)]
+    sample_inputs = [torch.rand(*shape).to(device) for shape in sample_input_shapes]
+    print("模型摘要 (使用torchinfo):")
+    summary(model, input_data=sample_inputs, device=device)
+    print("="*50 + "\n")
+    
+    # return
+
     # 优化器
     optimizer = optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     
@@ -76,9 +86,9 @@ def train(config: Config):
             # 记录损失
             epoch_loss += loss.item()
             
-            # 打印进度
-            if (batch_idx + 1) % 50 == 0:
-                print(f"Epoch [{epoch+1}/{config.epochs}], Batch [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item():.4f}")
+            # # 打印进度 2448个样本/64每一批次=39批次，每个epoch只有39批次，所以%50不会显示
+            # if (batch_idx + 1) % 50 == 0:
+            #     print(f"Epoch [{epoch+1}/{config.epochs}], Batch [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item():.4f}")
         
         # 计算平均训练损失
         avg_train_loss = epoch_loss / len(train_loader)

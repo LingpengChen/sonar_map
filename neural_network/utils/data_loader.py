@@ -4,8 +4,8 @@ import numpy as np
 import os
 from torch.utils.data import TensorDataset, DataLoader
 
-class ProbabilityDataLoader:
-    def __init__(self, M, N, batch_size=64, data_dir='./data/dataset/'):
+class SonarMapDataLoader:
+    def __init__(self, M, N, batch_size=64, data_dir='../data/dataset/'):
         """
         初始化数据加载器
         Args:
@@ -146,3 +146,4 @@ class ProbabilityDataLoader:
                 true_matrices[i, :, j] = true_matrices[i, :, j] / true_matrices[i, :, j].sum()
                 
         return prior_matrices, obs_vectors, true_matrices
+    

@@ -5,9 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from model_config import Config
 from modules import get_network
-from utils import ProbabilityDataGenerator, plot_matrices, cross_entropy_loss, kl_divergence, mse_loss
+from utils import SonarMapDataLoader, SonarMapDataGenerator, cross_entropy_loss, plot_matrices, plot_training_curves, kl_divergence, mse_loss
 
-def inference(config, model_path, num_samples=10):
+def inference(config: Config, model_path, num_samples=10):
     # 设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"使用设备: {device}")
@@ -25,9 +25,22 @@ def inference(config, model_path, num_samples=10):
     os.makedirs(results_dir, exist_ok=True)
     
     # 生成测试数据
-    data_generator = ProbabilityDataGenerator(config.M, config.N)
-    prior_matrices, obs_vectors, true_matrices = data_generator.generate_batch(num_samples)
+    # data_generator = ProbabilityDataGenerator(config.M, config.N)
+    # prior_matrices, obs_vectors, true_matrices = data_generator.generate_batch(num_samples)
     
+    data_loader = SonarMapDataLoader(config.M, config.N, batch_size=1, data_dir=config.data_dir)
+    _, _, test_loader = data_loader.get_data_loaders(
+        train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, shuffle=False
+    )
+
+    
+    # 获取测试数据
+    test_data = []
+    for i, (prior, obs, true) in enumerate(test_loader):
+        if i >= num_samples:
+            break
+        test_data.append((prior, obs, true))
+
     # 评估模型
     model.eval()
     losses = []
@@ -35,11 +48,12 @@ def inference(config, model_path, num_samples=10):
     mse_losses = []
     
     with torch.no_grad():
-        for i in range(num_samples):
-            prior = prior_matrices[i].unsqueeze(0).to(device)
-            obs = obs_vectors[i].unsqueeze(0).to(device)
-            true = true_matrices[i].unsqueeze(0).to(device)
-            
+        # for i in range(num_samples):
+        #     prior = prior_matrices[i].unsqueeze(0).to(device)
+        #     obs = obs_vectors[i].unsqueeze(0).to(device)
+        #     true = true_matrices[i].unsqueeze(0).to(device)
+        for i, (prior, obs, true) in enumerate(test_data):
+
             # 前向传播
             posterior = model(prior, obs)
             

@@ -2,7 +2,7 @@
 import torch
 import numpy as np
 
-class ProbabilityDataGenerator:
+class SonarMapDataGenerator:
     def __init__(self, M, N, batch_size=64):
         """
         初始化数据生成器

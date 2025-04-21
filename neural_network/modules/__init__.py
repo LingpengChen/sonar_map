@@ -1,6 +1,8 @@
 from .concat_network import ConcatNetwork
 from .attention_network import AttentionNetwork
+# from ..model_config import Config
 
+# def get_network(config: Config):
 def get_network(config):
     if config.model_type == 'concat':
         return ConcatNetwork(config.M, config.N, config.hidden_dim, config.dropout)
